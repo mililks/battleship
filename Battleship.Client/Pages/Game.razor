@@ -1,0 +1,393 @@
+﻿@page "/game/{RoomCode}"
+@inject global::Battleship.Client.Services.GameHubService HubService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@implements IDisposable
+
+<div class="game-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <button class="btn btn-secondary" @onclick="LeaveGame">
+            ⬅️ До головного меню
+        </button>
+        <div>
+            <h2>Кімната: <span class="badge">@RoomCode</span></h2>
+            @if (Host && !isBattleStarted)
+            {
+                <button class="btn btn-primary" style="margin-top: 5px; font-size: 13px;" @onclick="CopyInviteLink">
+                    📋 @copyButtonText
+                </button>
+            }
+        </div>
+        <div style="width: 140px;"></div>
+    </div>
+
+    <h4 class="status-banner">@statusMessage</h4>
+
+
+    <!-- Фаза 1: Очікування гравців та розстановка -->
+    @if (!isBattleStarted)
+    {
+        <div class="placement-panel">
+            <button class="btn btn-primary" @onclick="RandomizeFleet" disabled="@isReady">
+                🔀 Випадкова розстановка
+            </button>
+            <button class="btn btn-success" @onclick="ConfirmReady" disabled="@isReady">
+                @(isReady ? "Очікування суперника..." : "Готовий до бою!")
+            </button>
+        </div>
+    }
+
+    <!-- Фаза 2: Сітки полів -->
+    <div class="boards-layout">
+        <!-- Власне поле -->
+        <div class="board-wrapper">
+            <h3>Ваш флот</h3>
+            <div class="ocean-grid">
+                @for (int y = 0; y < 10; y++)
+                {
+                    @for (int x = 0; x < 10; x++)
+                    {
+                        var cellState = myBoard.GetCellState(x, y);
+                        <div class="grid-cell @GetCellCssClass(cellState, isOwnBoard: true)">
+                            @GetCellSymbol(cellState, isOwnBoard: true)
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+
+        <!-- Поле суперника -->
+        <div class="board-wrapper">
+            <h3>Поле суперника</h3>
+            <div class="ocean-grid">
+                @for (int y = 0; y < 10; y++)
+                {
+                    @for (int x = 0; x < 10; x++)
+                    {
+                        int targetX = x;
+                        int targetY = y;
+                        var cellState = trackingGrid[targetX, targetY];
+                        <button class="grid-cell target-cell @GetCellCssClass(cellState, isOwnBoard: false)"
+                                disabled="@(!isMyTurn || !isBattleStarted || cellState != CellState.Empty)"
+                                @onclick="() => MakeShot(targetX, targetY)">
+                            @GetCellSymbol(cellState, isOwnBoard: false)
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .game-container {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        text-align: center;
+        margin: 20px auto;
+        max-width: 900px;
+    }
+
+    .badge {
+        background-color: #0284c7;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+
+    .status-banner {
+        color: #0f172a;
+        margin: 15px 0;
+        min-height: 28px;
+    }
+
+    .placement-panel {
+        margin: 15px 0;
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 15px;
+    }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+    .btn-primary {
+        background-color: #0284c7;
+        color: white;
+    }
+
+    .btn-success {
+        background-color: #16a34a;
+        color: white;
+    }
+
+    .boards-layout {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        flex-wrap: wrap;
+        margin-top: 15px;
+    }
+
+    .board-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .ocean-grid {
+        display: grid;
+        grid-template-columns: repeat(10, 32px);
+        grid-template-rows: repeat(10, 32px);
+        gap: 2px;
+        background-color: #cbd5e1;
+        padding: 4px;
+        border-radius: 4px;
+    }
+
+    .grid-cell {
+        width: 32px;
+        height: 32px;
+        background-color: #f0f9ff;
+        border: 1px solid #bae6fd;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 16px;
+        box-sizing: border-box;
+    }
+
+    .btn-secondary {
+        background-color: #64748b;
+        color: white;
+    }
+
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+
+    .target-cell {
+        cursor: pointer;
+    }
+
+        .target-cell:disabled {
+            cursor: default;
+        }
+    /* Кольори статусів клітинок */
+    .cell-ship {
+        background-color: #475569;
+        color: #fff;
+    }
+    /* Власний корабель */
+    .cell-hit {
+        background-color: #ef4444;
+        color: #fff;
+    }
+    /* Влучання (червоний) */
+    .cell-miss {
+        background-color: #94a3b8;
+        color: #334155;
+    }
+    /* Промах (сіра точка) */
+</style>
+
+@code {
+    [Parameter] public string RoomCode { get; set; } = string.Empty;
+    [SupplyParameterFromQuery] public bool Host { get; set; }
+
+    private Board myBoard = new();
+    private CellState[,] trackingGrid = new CellState[10, 10]; // Поле відстеження пострілів
+
+    private bool isReady = false;
+    private bool isBattleStarted = false;
+    private bool isMyTurn = false;
+    private string statusMessage = "Розставте флот і натисніть «Готовий до бою»";
+    private string copyButtonText = "Скопіювати запрошення";
+
+    private async Task LeaveGame()    
+    {
+        // Сповіщаємо сервер про вихід з кімнати
+        await HubService.LeaveRoomAsync(RoomCode);
+
+        // Перенаправляємо гравця назад на головну сторінку
+        Navigation.NavigateTo("/");
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        myBoard.PlaceFleetRandomly();
+
+        // 1. Перевіряємо, чи підключений клієнт до SignalR (критично при переході за URL)
+        if (!HubService.IsConnected)
+        {
+            try
+            {
+                await HubService.StartConnectionAsync("https://battleship-server-api-h7bzc9e0excrcned.polandcentral-01.azurewebsites.net/gamehub");
+            }
+            catch (Exception ex)
+            {
+                statusMessage = $"Помилка з'єднання: {ex.Message}";
+                return;
+            }
+        }
+
+        // 2. Підписуємося на події
+        HubService.OnPlayerJoined += HandlePlayerJoined;
+        HubService.OnGameStarted += HandleGameStarted;
+        HubService.OnShotResultReceived += HandleShotResult;
+        HubService.OnOpponentDisconnected += HandleOpponentDisconnected;
+
+        // 3. Якщо зайшов гість за посиланням — автоматично приєднуємося до кімнати на сервері!
+        if (!Host)
+        {
+            statusMessage = "Приєднання до кімнати...";
+            bool joined = await HubService.JoinRoomAsync(RoomCode);
+            if (joined)
+            {
+                statusMessage = "Ви підключилися! Розставте флот і підтвердіть готовність.";
+            }
+            else
+            {
+                statusMessage = "Не вдалося зайти (кімната не існує або заповнена).";
+            }
+        }
+        else
+        {
+            statusMessage = "Поділіться посиланням із другом та підтвердіть готовність.";
+        }
+    }
+    private async Task CopyInviteLink()
+    {
+        // Формуємо чисте посилання для другого гравця БЕЗ ?host=true
+        var uri = new Uri(Navigation.Uri);
+        var baseAddress = uri.GetLeftPart(UriPartial.Path); // отримує http://localhost:7091/game/CODE
+        await JS.InvokeVoidAsync("copyToClipboard", baseAddress);
+
+        copyButtonText = "✅ Посилання скопійовано!";
+        await Task.Delay(2500);
+        copyButtonText = "Скопіювати запрошення";
+        StateHasChanged();
+    }
+
+
+    private void RandomizeFleet()
+    {
+        myBoard.PlaceFleetRandomly();
+        StateHasChanged();
+    }
+
+    private async Task ConfirmReady()
+    {
+        isReady = true;
+        statusMessage = "Очікування готовності суперника...";
+        var points = myBoard.GetAllOccupiedPoints();
+        await HubService.SetReadyAsync(RoomCode, points);
+    }
+
+    private void HandlePlayerJoined(string code)
+    {
+        statusMessage = "Суперник підключився до кімнати!";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleGameStarted(string firstTurnConnectionId)
+    {
+        isBattleStarted = true;
+       
+        isMyTurn = Host;
+        statusMessage = isMyTurn ? "Бій розпочато! Ваш перший хід!" : "Бій розпочато! Хід супротивника...";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task MakeShot(int x, int y)
+    {
+        if (!isMyTurn) return;
+        await HubService.SendShotAsync(RoomCode, new Point(x, y));
+    }
+
+    private void HandleShotResult(ShotResultDto result)
+    {
+        // Оновлюємо мапу пострілів або власну дошку
+        var pt = result.Target;
+
+        if (isMyTurn)
+        {
+            // Це був наш постріл
+            trackingGrid[pt.X, pt.Y] = result.IsHit ? CellState.Hit : CellState.Miss;
+
+            if (result.IsGameOver)
+            {
+                statusMessage = "🏆 Вітаємо! Ви знищили весь ворожий флот і перемогли!";
+                isMyTurn = false;
+            }
+            else
+            {
+                isMyTurn = result.IsHit; // Якщо влучив — стріляєш знову, якщо промах — хід переходить
+                statusMessage = result.IsHit ? "🎯 Влучання! Стріляйте ще раз." : "🌊 Промах. Хід перейшов до суперника.";
+            }
+        }
+        else
+        {
+            // Це стріляв суперник по нашій дошці:
+            // Відмічаємо на нашій дошці, що по ній влучили або промазали!
+            if (result.IsHit)
+            {
+                myBoard.ProcessShot(pt);
+            }
+
+            if (result.IsGameOver)
+            {
+                statusMessage = "💀 Ваш флот знищено. Поразка.";
+                isMyTurn = false;
+            }
+            else
+            {
+                isMyTurn = !result.IsHit;
+                statusMessage = result.IsHit ? "💥 Суперник влучив у ваш корабель!" : "🛡️ Суперник промахнувся. Ваш хід!";
+            }
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleOpponentDisconnected()
+    {
+        statusMessage = "Суперник вийшов із гри. Партію завершено.";
+        isBattleStarted = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetCellCssClass(CellState state, bool isOwnBoard) => state switch
+    {
+        CellState.Ship when isOwnBoard => "cell-ship",
+        CellState.Hit => "cell-hit",
+        CellState.Miss => "cell-miss",
+        _ => ""
+    };
+
+    private string GetCellSymbol(CellState state, bool isOwnBoard) => state switch
+    {
+        CellState.Ship when isOwnBoard => "■",
+        CellState.Hit => "✕",
+        CellState.Miss => "•",
+        _ => ""
+    };
+
+    public void Dispose()
+    {
+        HubService.OnPlayerJoined -= HandlePlayerJoined;
+        HubService.OnGameStarted -= HandleGameStarted;
+        HubService.OnShotResultReceived -= HandleShotResult;
+        HubService.OnOpponentDisconnected -= HandleOpponentDisconnected;
+    }
+}

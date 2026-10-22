@@ -1,0 +1,17 @@
+## Скомпільований код і тимчасові папки
+[Bb]in/
+[Oo]bj/
+publish/
+publish-client/
+
+## Налаштування Visual Studio
+.vs/
+*.user
+*.suo
+
+## Згенеровані асети публікації
+*.runtimeconfig.json
+*.staticwebassets.endpoints.json
+
+
+publish-client/

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Battleship.Client/Battleship.Client.csproj" Id="42340efb-df3e-422f-8f9d-959e4fb49ebd" />
+  <Project Path="Battleship.Server/Battleship.Server.csproj" Id="8dc359c8-b596-42db-8daf-cb9d8d1404fe" />
+  <Project Path="Battleship.Shared/Battleship.Shared.csproj" />
+</Solution>

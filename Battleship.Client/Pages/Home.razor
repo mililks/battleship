@@ -1,0 +1,83 @@
+﻿@page "/"
+@using Battleship.Client.Services
+@inject NavigationManager Navigation
+@inject GameHubService HubService
+
+<div style="max-width: 500px; margin: 50px auto; font-family: sans-serif; text-align: center;">
+    <h2>🚢 Онлайн Морський бій</h2>
+
+    @if (!isConnected)
+    {
+        <p><em>Підключення до ігрового сервера...</em></p>
+    }
+    else
+    {
+        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+            <h4>Створити нову гру</h4>
+            <button @onclick="CreateGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
+                Створити кімнату
+            </button>
+        </div>
+
+        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+            <h4>Приєднатися до гри</h4>
+            <input @bind="inputRoomCode" placeholder="Введіть 6-значний код"
+                   style="padding: 8px; font-size: 16px; text-transform: uppercase;" />
+            <br /><br />
+            <button @onclick="JoinGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
+                Приєднатися
+            </button>
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <p style="color: red; margin-top: 10px;">@errorMessage</p>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool isConnected = false;
+    private string inputRoomCode = "";
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+  
+            await HubService.StartConnectionAsync("https://battleship-server-api-h7bzc9e0excrcned.polandcentral-01.azurewebsites.net/gamehub");
+            isConnected = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Помилка підключення до сервера: {ex.Message}";
+        }
+    }
+
+
+
+    private async Task CreateGame()
+    {
+        var code = await HubService.CreateRoomAsync();
+        Navigation.NavigateTo($"/game/{code}?host=true");
+    }
+
+    private async Task JoinGame()
+    {
+        if (string.IsNullOrWhiteSpace(inputRoomCode))
+        {
+            errorMessage = "Будь ласка, введіть код кімнати!";
+            return;
+        }
+
+        bool success = await HubService.JoinRoomAsync(inputRoomCode);
+        if (success)
+        {
+            Navigation.NavigateTo($"/game/{inputRoomCode.ToUpper()}?host=false");
+        }
+        else
+        {
+            errorMessage = "Кімнату не знайдено або вона вже заповнена!";
+        }
+    }
+}
