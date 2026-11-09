@@ -1,4 +1,4 @@
-﻿@page "/game/{RoomCode}"
+@page "/game/{RoomCode}"
 @inject global::Battleship.Client.Services.GameHubService HubService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -325,6 +325,25 @@
             // Це був наш постріл
             trackingGrid[pt.X, pt.Y] = result.IsHit ? CellState.Hit : CellState.Miss;
 
+            // Якщо корабель затоплено — виділяємо всі його координати як Hit,
+            // а всі сусідні координати навколо нього автоматично позначаємо як Miss (промах)
+            if (result.IsSunk && result.SunkShipCoordinates != null)
+            {
+                foreach (var shipPt in result.SunkShipCoordinates)
+                {
+                    trackingGrid[shipPt.X, shipPt.Y] = CellState.Hit;
+                }
+
+                var surrounding = Board.GetSurroundingCoordinates(result.SunkShipCoordinates);
+                foreach (var sPt in surrounding)
+                {
+                    if (trackingGrid[sPt.X, sPt.Y] == CellState.Empty)
+                    {
+                        trackingGrid[sPt.X, sPt.Y] = CellState.Miss;
+                    }
+                }
+            }
+
             if (result.IsGameOver)
             {
                 statusMessage = "🏆 Вітаємо! Ви знищили весь ворожий флот і перемогли!";
@@ -333,17 +352,15 @@
             else
             {
                 isMyTurn = result.IsHit; // Якщо влучив — стріляєш знову, якщо промах — хід переходить
-                statusMessage = result.IsHit ? "🎯 Влучання! Стріляйте ще раз." : "🌊 Промах. Хід перейшов до суперника.";
+                statusMessage = result.IsHit
+                    ? (result.IsSunk ? $"🔥 Затоплено: {result.SunkShipName ?? "корабель"}! Стріляйте ще раз." : "🎯 Влучання! Стріляйте ще раз.")
+                    : "🌊 Промах. Хід перейшов до суперника.";
             }
         }
         else
         {
-            // Це стріляв суперник по нашій дошці:
-            // Відмічаємо на нашій дошці, що по ній влучили або промазали!
-            if (result.IsHit)
-            {
-                myBoard.ProcessShot(pt);
-            }
+            // Це стріляв суперник по нашій дошці (обробляємо і влучання, і промахи):
+            myBoard.ProcessShot(pt);
 
             if (result.IsGameOver)
             {
@@ -353,7 +370,9 @@
             else
             {
                 isMyTurn = !result.IsHit;
-                statusMessage = result.IsHit ? "💥 Суперник влучив у ваш корабель!" : "🛡️ Суперник промахнувся. Ваш хід!";
+                statusMessage = result.IsHit
+                    ? (result.IsSunk ? $"💥 Суперник затопив ваш {result.SunkShipName ?? "корабель"}!" : "💥 Суперник влучив у ваш корабель!")
+                    : "🛡️ Суперник промахнувся. Ваш хід!";
             }
         }
 

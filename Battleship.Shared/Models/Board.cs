@@ -1,4 +1,4 @@
-﻿namespace Battleship.Shared.Models;
+namespace Battleship.Shared.Models;
 
 using Battleship.Shared.Enums;
 using Battleship.Shared.Models.Ships;
@@ -16,6 +16,7 @@ public class Board
         ValidateCoordinate(x, y);
         return _grid[x, y];
     }
+
     public List<Point> GetAllOccupiedPoints()
     {
         return _ships.SelectMany(s => s.OccupiedPoints).ToList();
@@ -73,6 +74,12 @@ public class Board
             _grid[target.X, target.Y] = CellState.Hit;
             var ship = _ships.First(s => s.OccupiedPoints.Contains(target));
             ship.RegisterHit();
+
+            if (ship.IsSunk)
+            {
+                MarkSurroundingAsMiss(ship.OccupiedPoints);
+            }
+
             return (true, ship.IsSunk, ship);
         }
 
@@ -84,7 +91,43 @@ public class Board
         return (false, false, null);
     }
 
+    public static List<Point> GetSurroundingCoordinates(IEnumerable<Point> shipCoordinates)
+    {
+        var shipSet = new HashSet<Point>(shipCoordinates);
+        var surrounding = new HashSet<Point>();
+
+        foreach (var pt in shipSet)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    var neighbor = new Point(pt.X + dx, pt.Y + dy);
+                    if (neighbor.IsValid() && !shipSet.Contains(neighbor))
+                    {
+                        surrounding.Add(neighbor);
+                    }
+                }
+            }
+        }
+
+        return surrounding.ToList();
+    }
+
+    public void MarkSurroundingAsMiss(IEnumerable<Point> shipCoordinates)
+    {
+        var surrounding = GetSurroundingCoordinates(shipCoordinates);
+        foreach (var pt in surrounding)
+        {
+            if (_grid[pt.X, pt.Y] == CellState.Empty)
+            {
+                _grid[pt.X, pt.Y] = CellState.Miss;
+            }
+        }
+    }
+
     public bool AreAllSunk() => _ships.Count > 0 && _ships.All(s => s.IsSunk);
+
     public void PlaceFleetRandomly()
     {
         _ships.Clear();
@@ -93,18 +136,18 @@ public class Board
                 _grid[x, y] = CellState.Empty;
 
         var fleetToPlace = new List<Ship>
-    {
-        new Carrier(),         
-        new Battleship(),    
-        new Battleship(),
-        new Cruiser(),         
-        new Cruiser(),
-        new Cruiser(),
-        new Destroyer(),        
-        new Destroyer(),
-        new Destroyer(),
-        new Destroyer()
-    };
+        {
+            new Carrier(),
+            new Battleship(),
+            new Battleship(),
+            new Cruiser(),
+            new Cruiser(),
+            new Cruiser(),
+            new Destroyer(),
+            new Destroyer(),
+            new Destroyer(),
+            new Destroyer()
+        };
 
         var random = new Random();
 
@@ -127,6 +170,7 @@ public class Board
         if (x < 0 || x >= Size || y < 0 || y >= Size)
             throw new ArgumentOutOfRangeException("Координата виходить за межі сітки 10x10.");
     }
+
     public void SetShipsFromPoints(List<Point> points)
     {
         _ships.Clear();
@@ -134,12 +178,57 @@ public class Board
             for (int y = 0; y < Size; y++)
                 _grid[x, y] = CellState.Empty;
 
-        foreach (var pt in points)
+        var remaining = new HashSet<Point>(points);
+
+        while (remaining.Count > 0)
         {
-            _grid[pt.X, pt.Y] = CellState.Ship;
-            var ship = new Destroyer();
-            ship.AssignCoordinates(new List<Point> { pt });
+            var first = remaining.First();
+            remaining.Remove(first);
+
+            var shipPoints = new List<Point> { first };
+            var queue = new Queue<Point>();
+            queue.Enqueue(first);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                var neighbors = remaining.Where(p =>
+                    (Math.Abs(p.X - current.X) == 1 && p.Y == current.Y) ||
+                    (Math.Abs(p.Y - current.Y) == 1 && p.X == current.X)
+                ).ToList();
+
+                foreach (var n in neighbors)
+                {
+                    remaining.Remove(n);
+                    shipPoints.Add(n);
+                    queue.Enqueue(n);
+                }
+            }
+
+            shipPoints = shipPoints.OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
+
+            Ship ship = shipPoints.Count switch
+            {
+                4 => new Carrier(),
+                3 => new Battleship(),
+                2 => new Cruiser(),
+                _ => new Destroyer()
+            };
+
+            if (shipPoints.Count > 1)
+            {
+                ship.Orientation = shipPoints[0].X != shipPoints[1].X
+                    ? ShipOrientation.Horizontal
+                    : ShipOrientation.Vertical;
+            }
+
+            ship.AssignCoordinates(shipPoints);
             _ships.Add(ship);
+
+            foreach (var pt in shipPoints)
+            {
+                _grid[pt.X, pt.Y] = CellState.Ship;
+            }
         }
     }
 }
