@@ -32,9 +32,32 @@
             <button class="btn btn-primary" @onclick="RandomizeFleet" disabled="@isReady">
                 🔀 Випадкова розстановка
             </button>
-            <button class="btn btn-success" @onclick="ConfirmReady" disabled="@isReady">
+            <button class="btn btn-warning" @onclick="ClearFleet" disabled="@isReady">
+                🗑️ Очистити поле
+            </button>
+            <button class="btn btn-info" @onclick="ToggleOrientation" disabled="@isReady">
+                🔄 @(selectedOrientation == ShipOrientation.Horizontal ? "Горизонтально (➡️)" : "Вертикально (⬇️)")
+            </button>
+            <button class="btn btn-success" @onclick="ConfirmReady" disabled="@(isReady || !myBoard.IsFleetComplete())">
                 @(isReady ? "Очікування суперника..." : "Готовий до бою!")
             </button>
+        </div>
+
+        <div class="shipyard-panel">
+            <span class="shipyard-title">Оберіть корабель для встановлення (клік по встановленому кораблю на полі — прибрати):</span>
+            <div class="shipyard-buttons">
+                @foreach (var size in new[] { 4, 3, 2, 1 })
+                {
+                    int remaining = GetRemainingShips(size);
+                    bool isSelected = selectedShipSize == size && remaining > 0;
+                    <button class="ship-select-btn @(isSelected ? "selected" : "")"
+                            disabled="@(isReady || remaining == 0)"
+                            @onclick="() => SelectShipSize(size)">
+                        <span class="ship-preview">@(new string('■', size))</span>
+                        <span>(@remaining шт.)</span>
+                    </button>
+                }
+            </div>
         </div>
     }
 
@@ -42,14 +65,19 @@
     <div class="boards-layout">
         <!-- Власне поле -->
         <div class="board-wrapper">
-            <h3>Ваш флот</h3>
-            <div class="ocean-grid">
+            <h3>Ваш флот (@myBoard.Ships.Count / 10)</h3>
+            <div class="ocean-grid" @onmouseleave="ClearHover">
                 @for (int y = 0; y < 10; y++)
                 {
                     @for (int x = 0; x < 10; x++)
                     {
-                        var cellState = myBoard.GetCellState(x, y);
-                        <div class="grid-cell @GetCellCssClass(cellState, isOwnBoard: true)">
+                        int cellX = x;
+                        int cellY = y;
+                        var cellState = myBoard.GetCellState(cellX, cellY);
+                        var previewClass = GetPreviewCssClass(cellX, cellY);
+                        <div class="grid-cell @GetCellCssClass(cellState, isOwnBoard: true) @previewClass @(!isBattleStarted && !isReady ? "placement-cell" : "")"
+                             @onclick="() => OnOwnBoardClick(cellX, cellY)"
+                             @onmouseenter="() => OnOwnBoardHover(cellX, cellY)">
                             @GetCellSymbol(cellState, isOwnBoard: true)
                         </div>
                     }
@@ -102,10 +130,63 @@
     }
 
     .placement-panel {
-        margin: 15px 0;
+        margin: 15px 0 10px 0;
         display: flex;
         justify-content: center;
-        gap: 12px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .shipyard-panel {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin: 0 auto 15px auto;
+        max-width: 680px;
+    }
+
+    .shipyard-title {
+        display: block;
+        font-size: 13px;
+        color: #475569;
+        margin-bottom: 8px;
+    }
+
+    .shipyard-buttons {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .ship-select-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 2px solid #cbd5e1;
+        border-radius: 6px;
+        background-color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.15s;
+    }
+
+        .ship-select-btn.selected {
+            border-color: #0284c7;
+            background-color: #e0f2fe;
+            font-weight: bold;
+        }
+
+        .ship-select-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+    .ship-preview {
+        color: #475569;
+        letter-spacing: 2px;
     }
 
     .btn {
@@ -123,6 +204,16 @@
 
     .btn-primary {
         background-color: #0284c7;
+        color: white;
+    }
+
+    .btn-warning {
+        background-color: #eab308;
+        color: white;
+    }
+
+    .btn-info {
+        background-color: #0ea5e9;
         color: white;
     }
 
@@ -166,6 +257,21 @@
         font-weight: bold;
         font-size: 16px;
         box-sizing: border-box;
+        user-select: none;
+    }
+
+    .placement-cell {
+        cursor: pointer;
+    }
+
+    .preview-valid {
+        background-color: #86efac !important;
+        border-color: #22c55e !important;
+    }
+
+    .preview-invalid {
+        background-color: #fca5a5 !important;
+        border-color: #ef4444 !important;
     }
 
     .btn-secondary {
@@ -215,6 +321,18 @@
     private string statusMessage = "Розставте флот і натисніть «Готовий до бою»";
     private string copyButtonText = "Скопіювати запрошення";
 
+    // Ручна розстановка кораблів
+    private static readonly Dictionary<int, int> MaxShipsBySize = new()
+    {
+        { 4, 1 },
+        { 3, 2 },
+        { 2, 3 },
+        { 1, 4 }
+    };
+    private int? selectedShipSize = 4;
+    private ShipOrientation selectedOrientation = ShipOrientation.Horizontal;
+    private Point? hoverPoint = null;
+
     private async Task LeaveGame()    
     {
         // Сповіщаємо сервер про вихід з кімнати
@@ -226,6 +344,7 @@
     protected override async Task OnInitializedAsync()
     {
         myBoard.PlaceFleetRandomly();
+        AutoSelectNextShipSize();
 
         // 1. Перевіряємо, чи підключений клієнт до SignalR (критично при переході за URL)
         if (!HubService.IsConnected)
@@ -279,16 +398,152 @@
         StateHasChanged();
     }
 
+    private int GetRemainingShips(int size)
+    {
+        int placed = myBoard.Ships.Count(s => s.Size == size);
+        return Math.Max(0, MaxShipsBySize[size] - placed);
+    }
+
+    private void AutoSelectNextShipSize()
+    {
+        if (selectedShipSize.HasValue && GetRemainingShips(selectedShipSize.Value) > 0)
+            return;
+
+        foreach (var size in new[] { 4, 3, 2, 1 })
+        {
+            if (GetRemainingShips(size) > 0)
+            {
+                selectedShipSize = size;
+                return;
+            }
+        }
+        selectedShipSize = null;
+    }
+
+    private void SelectShipSize(int size)
+    {
+        if (GetRemainingShips(size) > 0)
+        {
+            selectedShipSize = size;
+        }
+    }
+
+    private void ToggleOrientation()
+    {
+        selectedOrientation = selectedOrientation == ShipOrientation.Horizontal
+            ? ShipOrientation.Vertical
+            : ShipOrientation.Horizontal;
+    }
+
+    private void ClearFleet()
+    {
+        if (isReady || isBattleStarted) return;
+        myBoard.Clear();
+        selectedShipSize = 4;
+        statusMessage = "Поле очищено. Виставте кораблі на поле.";
+    }
 
     private void RandomizeFleet()
     {
+        if (isReady || isBattleStarted) return;
         myBoard.PlaceFleetRandomly();
+        AutoSelectNextShipSize();
+        statusMessage = "Флот розставлено випадковим чином.";
         StateHasChanged();
+    }
+
+    private void OnOwnBoardHover(int x, int y)
+    {
+        if (isReady || isBattleStarted) return;
+        hoverPoint = new Point(x, y);
+    }
+
+    private void ClearHover()
+    {
+        hoverPoint = null;
+    }
+
+    private string GetPreviewCssClass(int x, int y)
+    {
+        if (isReady || isBattleStarted || hoverPoint == null || !selectedShipSize.HasValue)
+            return "";
+
+        int size = selectedShipSize.Value;
+        if (GetRemainingShips(size) <= 0)
+            return "";
+
+        bool isValid = myBoard.CanPlaceShip(size, hoverPoint, selectedOrientation, out var pts);
+
+        // Перевіряємо, чи входить клітинка (x, y) до проєкції корабля від hoverPoint
+        bool inFootprint = false;
+        for (int i = 0; i < size; i++)
+        {
+            int cx = selectedOrientation == ShipOrientation.Horizontal ? hoverPoint.X + i : hoverPoint.X;
+            int cy = selectedOrientation == ShipOrientation.Vertical ? hoverPoint.Y + i : hoverPoint.Y;
+            if (cx == x && cy == y)
+            {
+                inFootprint = true;
+                break;
+            }
+        }
+
+        if (!inFootprint) return "";
+        return isValid ? "preview-valid" : "preview-invalid";
+    }
+
+    private void OnOwnBoardClick(int x, int y)
+    {
+        if (isReady || isBattleStarted) return;
+
+        var clickedPt = new Point(x, y);
+
+        // Якщо клікнули по вже встановленому кораблю — прибираємо його, щоб можна було переставити
+        if (myBoard.GetCellState(x, y) == CellState.Ship)
+        {
+            var removed = myBoard.RemoveShipAt(clickedPt);
+            if (removed != null)
+            {
+                selectedShipSize = removed.Size;
+                selectedOrientation = removed.Orientation;
+                statusMessage = $"Прибрано: {removed.Name}. Оберіть нову позицію.";
+            }
+            return;
+        }
+
+        // Інакше пробуємо поставити обраний корабель
+        if (!selectedShipSize.HasValue || GetRemainingShips(selectedShipSize.Value) <= 0)
+        {
+            AutoSelectNextShipSize();
+            if (!selectedShipSize.HasValue)
+            {
+                statusMessage = "Усі кораблі вже виставлено! Натисніть «Готовий до бою!» або клікніть по кораблю, щоб переставити.";
+                return;
+            }
+        }
+
+        var ship = Board.CreateShipBySize(selectedShipSize.Value);
+        if (myBoard.TryPlaceShip(ship, clickedPt, selectedOrientation))
+        {
+            AutoSelectNextShipSize();
+            statusMessage = myBoard.IsFleetComplete()
+                ? "Усі кораблі розставлено! Натисніть «Готовий до бою!»."
+                : $"Встановлено: {ship.Name}. Залишилося кораблів: {10 - myBoard.Ships.Count}.";
+        }
+        else
+        {
+            statusMessage = "Неможливо поставити корабель тут (вихід за межі або дотик до іншого корабля).";
+        }
     }
 
     private async Task ConfirmReady()
     {
+        if (!myBoard.IsFleetComplete())
+        {
+            statusMessage = "Спочатку виставте всі 10 кораблів!";
+            return;
+        }
         isReady = true;
+        hoverPoint = null;
         statusMessage = "Очікування готовності суперника...";
         var points = myBoard.GetAllOccupiedPoints();
         await HubService.SetReadyAsync(RoomCode, points);

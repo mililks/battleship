@@ -22,11 +22,11 @@ public class Board
         return _ships.SelectMany(s => s.OccupiedPoints).ToList();
     }
 
-    public bool TryPlaceShip(Ship ship, Point start, ShipOrientation orientation)
+    public bool CanPlaceShip(int size, Point start, ShipOrientation orientation, out List<Point> prospectivePoints)
     {
-        var prospectivePoints = new List<Point>();
+        prospectivePoints = new List<Point>();
 
-        for (int i = 0; i < ship.Size; i++)
+        for (int i = 0; i < size; i++)
         {
             int cx = orientation == ShipOrientation.Horizontal ? start.X + i : start.X;
             int cy = orientation == ShipOrientation.Vertical ? start.Y + i : start.Y;
@@ -53,6 +53,14 @@ public class Board
             }
         }
 
+        return true;
+    }
+
+    public bool TryPlaceShip(Ship ship, Point start, ShipOrientation orientation)
+    {
+        if (!CanPlaceShip(ship.Size, start, orientation, out var prospectivePoints))
+            return false;
+
         ship.Orientation = orientation;
         ship.AssignCoordinates(prospectivePoints);
 
@@ -64,6 +72,37 @@ public class Board
         _ships.Add(ship);
         return true;
     }
+
+    public Ship? RemoveShipAt(Point pt)
+    {
+        var ship = _ships.FirstOrDefault(s => s.OccupiedPoints.Contains(pt));
+        if (ship == null) return null;
+
+        _ships.Remove(ship);
+        foreach (var p in ship.OccupiedPoints)
+        {
+            _grid[p.X, p.Y] = CellState.Empty;
+        }
+        return ship;
+    }
+
+    public void Clear()
+    {
+        _ships.Clear();
+        for (int x = 0; x < Size; x++)
+            for (int y = 0; y < Size; y++)
+                _grid[x, y] = CellState.Empty;
+    }
+
+    public bool IsFleetComplete() => _ships.Count == 10;
+
+    public static Ship CreateShipBySize(int size) => size switch
+    {
+        4 => new Carrier(),
+        3 => new Battleship(),
+        2 => new Cruiser(),
+        _ => new Destroyer()
+    };
 
     public (bool IsHit, bool IsSunk, Ship? Ship) ProcessShot(Point target)
     {
@@ -130,10 +169,7 @@ public class Board
 
     public void PlaceFleetRandomly()
     {
-        _ships.Clear();
-        for (int x = 0; x < Size; x++)
-            for (int y = 0; y < Size; y++)
-                _grid[x, y] = CellState.Empty;
+        Clear();
 
         var fleetToPlace = new List<Ship>
         {
@@ -173,10 +209,7 @@ public class Board
 
     public void SetShipsFromPoints(List<Point> points)
     {
-        _ships.Clear();
-        for (int x = 0; x < Size; x++)
-            for (int y = 0; y < Size; y++)
-                _grid[x, y] = CellState.Empty;
+        Clear();
 
         var remaining = new HashSet<Point>(points);
 
@@ -207,13 +240,7 @@ public class Board
 
             shipPoints = shipPoints.OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
 
-            Ship ship = shipPoints.Count switch
-            {
-                4 => new Carrier(),
-                3 => new Battleship(),
-                2 => new Cruiser(),
-                _ => new Destroyer()
-            };
+            Ship ship = CreateShipBySize(shipPoints.Count);
 
             if (shipPoints.Count > 1)
             {
