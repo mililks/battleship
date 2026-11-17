@@ -3,37 +3,156 @@
 @inject NavigationManager Navigation
 @inject GameHubService HubService
 
-<div style="max-width: 500px; margin: 50px auto; font-family: sans-serif; text-align: center;">
-    <h2>🚢 Battleship Online</h2>
+<div class="home-container">
+    <h2 class="home-title">🚢 Battleship Online</h2>
+    <p class="home-subtitle">Classic naval combat — play with a friend online</p>
 
     @if (!isConnected)
     {
-        <p><em>Connecting to game server...</em></p>
+        <div class="menu-card">
+            <p class="connecting-text"><em>Connecting to game server...</em></p>
+        </div>
     }
     else
     {
-        <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+        <div class="menu-card">
             <h4>Create a New Game</h4>
-            <button @onclick="CreateGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-                Create Room
+            <p class="card-desc">Start a new room and share the invite link or code with your friend.</p>
+            <button class="btn btn-primary" @onclick="CreateGame">
+                ➕ Create Room
             </button>
         </div>
 
-        <div style="padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+        <div class="menu-card">
             <h4>Join a Game</h4>
-            <input @bind="inputRoomCode" placeholder="Enter 6-character code"
-                   style="padding: 8px; font-size: 16px; text-transform: uppercase;" />
-            <br /><br />
-            <button @onclick="JoinGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-                Join
-            </button>
+            <p class="card-desc">Enter a 6-character room code to join an existing match.</p>
+            <div class="join-row">
+                <input class="room-input"
+                       @bind="inputRoomCode"
+                       placeholder="e.g. 2B6A13"
+                       maxlength="6" />
+                <button class="btn btn-success" @onclick="JoinGame">
+                    🚀 Join
+                </button>
+            </div>
             @if (!string.IsNullOrEmpty(errorMessage))
             {
-                <p style="color: red; margin-top: 10px;">@errorMessage</p>
+                <p class="error-text">@errorMessage</p>
             }
         </div>
     }
 </div>
+
+<style>
+    .home-container {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 480px;
+        margin: 50px auto;
+        padding: 0 16px;
+        text-align: center;
+        color: #0f172a;
+    }
+
+    .home-title {
+        font-size: 30px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #0f172a;
+    }
+
+    .home-subtitle {
+        font-size: 14px;
+        color: #64748b;
+        margin-bottom: 28px;
+    }
+
+    .menu-card {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 22px;
+        margin-bottom: 20px;
+    }
+
+    .menu-card h4 {
+        margin: 0 0 6px 0;
+        font-size: 18px;
+        color: #0f172a;
+    }
+
+    .card-desc {
+        font-size: 13px;
+        color: #475569;
+        margin: 0 0 16px 0;
+    }
+
+    .connecting-text {
+        margin: 0;
+        color: #0284c7;
+        font-size: 15px;
+    }
+
+    .join-row {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .room-input {
+        padding: 8px 12px;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        text-align: center;
+        border: 2px solid #cbd5e1;
+        border-radius: 6px;
+        background-color: #ffffff;
+        color: #0f172a;
+        width: 160px;
+        outline: none;
+        transition: border-color 0.15s;
+    }
+
+        .room-input:focus {
+            border-color: #0284c7;
+        }
+
+    .btn {
+        padding: 9px 18px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 15px;
+        font-weight: 500;
+        transition: background-color 0.15s, opacity 0.15s;
+    }
+
+    .btn-primary {
+        background-color: #0284c7;
+        color: white;
+    }
+
+        .btn-primary:hover {
+            background-color: #0369a1;
+        }
+
+    .btn-success {
+        background-color: #16a34a;
+        color: white;
+    }
+
+        .btn-success:hover {
+            background-color: #15803d;
+        }
+
+    .error-text {
+        color: #dc2626;
+        font-size: 14px;
+        margin: 12px 0 0 0;
+    }
+</style>
 
 @code {
     private bool isConnected = false;
@@ -44,7 +163,6 @@
     {
         try
         {
-  
             await HubService.StartConnectionAsync("https://battleship-server-api-h7bzc9e0excrcned.polandcentral-01.azurewebsites.net/gamehub");
             isConnected = true;
         }
@@ -53,8 +171,6 @@
             errorMessage = $"Failed to connect to server: {ex.Message}";
         }
     }
-
-
 
     private async Task CreateGame()
     {
