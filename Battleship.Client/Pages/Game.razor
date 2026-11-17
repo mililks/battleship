@@ -53,7 +53,9 @@
                     <button class="ship-select-btn @(isSelected ? "selected" : "")"
                             disabled="@(isReady || remaining == 0)"
                             @onclick="() => SelectShipSize(size)">
-                        <span class="ship-preview">@(new string('■', size))</span>
+                        <span class="shipyard-sprite-box size-@size">
+                            <img src="images/ships/ship@(size).png" alt="@size-tile ship" class="shipyard-sprite-img" />
+                        </span>
                         <span>(@remaining left)</span>
                     </button>
                 }
@@ -75,10 +77,25 @@
                         int cellY = y;
                         var cellState = myBoard.GetCellState(cellX, cellY);
                         var previewClass = GetPreviewCssClass(cellX, cellY);
+                        var segment = (cellState == CellState.Ship || cellState == CellState.Hit)
+                            ? GetShipSegmentAt(cellX, cellY)
+                            : null;
                         <div class="grid-cell @GetCellCssClass(cellState, isOwnBoard: true) @previewClass @(!isBattleStarted && !isReady ? "placement-cell" : "")"
                              @onclick="() => OnOwnBoardClick(cellX, cellY)"
                              @onmouseenter="() => OnOwnBoardHover(cellX, cellY)">
-                            @GetCellSymbol(cellState, isOwnBoard: true)
+                            @if (segment is { } seg)
+                            {
+                                <div class="ship-sprite @(seg.ship.Orientation == ShipOrientation.Horizontal ? "horizontal" : "") @(cellState == CellState.Hit ? "damaged" : "")"
+                                     style="@GetShipSpriteStyle(seg.ship, seg.segmentIndex)"></div>
+                                @if (cellState == CellState.Hit)
+                                {
+                                    <span class="hit-cross">✕</span>
+                                }
+                            }
+                            else
+                            {
+                                @GetCellSymbol(cellState, isOwnBoard: true)
+                            }
                         </div>
                     }
                 }
@@ -246,7 +263,32 @@
         border-radius: 4px;
     }
 
+    .shipyard-sprite-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 24px;
+        overflow: hidden;
+    }
+
+    .shipyard-sprite-box.size-1 { width: 24px; }
+    .shipyard-sprite-box.size-2 { width: 48px; }
+    .shipyard-sprite-box.size-3 { width: 72px; }
+    .shipyard-sprite-box.size-4 { width: 96px; }
+
+    .shipyard-sprite-img {
+        width: 22px;
+        height: auto;
+        image-rendering: pixelated;
+        transform: rotate(-90deg);
+    }
+
+    .shipyard-sprite-box.size-1 .shipyard-sprite-img {
+        transform: none;
+    }
+
     .grid-cell {
+        position: relative;
         width: 32px;
         height: 32px;
         background-color: #f0f9ff;
@@ -258,6 +300,39 @@
         font-size: 16px;
         box-sizing: border-box;
         user-select: none;
+        overflow: hidden;
+    }
+
+    .ship-sprite {
+        position: absolute;
+        inset: 0;
+        background-repeat: no-repeat;
+        image-rendering: pixelated;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+        .ship-sprite.horizontal {
+            transform: rotate(-90deg);
+        }
+
+        .ship-sprite.damaged {
+            filter: brightness(0.8);
+        }
+
+    .hit-cross {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ef4444;
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 0 3px #ffffff, 0 0 2px #000000;
+        pointer-events: none;
+        z-index: 2;
     }
 
     .placement-cell {
@@ -290,22 +365,24 @@
         .target-cell:disabled {
             cursor: default;
         }
-    /* Кольори статусів клітинок */
+    /* Cell status colors */
     .cell-ship {
-        background-color: #475569;
-        color: #fff;
+        background-color: #e0f2fe;
     }
-    /* Власний корабель */
+    /* Own ship hit (keep ocean bg so ship sprite stays visible under red cross) */
+    .cell-own-hit {
+        background-color: rgba(239, 68, 68, 0.2);
+    }
+    /* Opponent hit (red) */
     .cell-hit {
         background-color: #ef4444;
         color: #fff;
     }
-    /* Влучання (червоний) */
+    /* Miss (gray dot) */
     .cell-miss {
         background-color: #94a3b8;
         color: #334155;
     }
-    /* Промах (сіра точка) */
 </style>
 
 @code {
@@ -674,9 +751,34 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private (Ship ship, int segmentIndex)? GetShipSegmentAt(int x, int y)
+    {
+        foreach (var ship in myBoard.Ships)
+        {
+            for (int i = 0; i < ship.OccupiedPoints.Count; i++)
+            {
+                var pt = ship.OccupiedPoints[i];
+                if (pt.X == x && pt.Y == y)
+                {
+                    return (ship, i);
+                }
+            }
+        }
+        return null;
+    }
+
+    private string GetShipSpriteStyle(Ship ship, int segmentIndex)
+    {
+        int size = ship.Size;
+        double posPercent = size > 1 ? (segmentIndex * 100.0 / (size - 1)) : 0.0;
+        string posStr = posPercent.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+        return $"background-image: url('images/ships/ship{size}.png'); background-size: 100% {size * 100}%; background-position: 0% {posStr}%;";
+    }
+
     private string GetCellCssClass(CellState state, bool isOwnBoard) => state switch
     {
         CellState.Ship when isOwnBoard => "cell-ship",
+        CellState.Hit when isOwnBoard => "cell-own-hit",
         CellState.Hit => "cell-hit",
         CellState.Miss => "cell-miss",
         _ => ""
