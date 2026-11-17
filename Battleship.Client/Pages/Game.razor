@@ -347,7 +347,8 @@
         AutoSelectNextShipSize();
 
         // 1. Ensure client is connected to SignalR (critical when navigating directly via URL)
-        if (!HubService.IsConnected)
+        bool wasConnectedOnEntry = HubService.IsConnected;
+        if (!wasConnectedOnEntry)
         {
             try
             {
@@ -366,18 +367,25 @@
         HubService.OnShotResultReceived += HandleShotResult;
         HubService.OnOpponentDisconnected += HandleOpponentDisconnected;
 
-        // 3. If a guest joined via link — automatically join the room on the server
+        // 3. If a guest joined via link (not from Home), join the room on the server
         if (!Host)
         {
-            statusMessage = "Joining room...";
-            bool joined = await HubService.JoinRoomAsync(RoomCode);
-            if (joined)
+            if (wasConnectedOnEntry)
             {
                 statusMessage = "Connected! Place your fleet and confirm readiness.";
             }
             else
             {
-                statusMessage = "Failed to join (room does not exist or is full).";
+                statusMessage = "Joining room...";
+                bool joined = await HubService.JoinRoomAsync(RoomCode);
+                if (joined)
+                {
+                    statusMessage = "Connected! Place your fleet and confirm readiness.";
+                }
+                else
+                {
+                    statusMessage = "Failed to join (room does not exist or is full).";
+                }
             }
         }
         else
