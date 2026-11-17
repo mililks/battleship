@@ -4,28 +4,28 @@
 @inject GameHubService HubService
 
 <div style="max-width: 500px; margin: 50px auto; font-family: sans-serif; text-align: center;">
-    <h2>🚢 Онлайн Морський бій</h2>
+    <h2>🚢 Battleship Online</h2>
 
     @if (!isConnected)
     {
-        <p><em>Підключення до ігрового сервера...</em></p>
+        <p><em>Connecting to game server...</em></p>
     }
     else
     {
         <div style="margin-bottom: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
-            <h4>Створити нову гру</h4>
+            <h4>Create a New Game</h4>
             <button @onclick="CreateGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-                Створити кімнату
+                Create Room
             </button>
         </div>
 
         <div style="padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
-            <h4>Приєднатися до гри</h4>
-            <input @bind="inputRoomCode" placeholder="Введіть 6-значний код"
+            <h4>Join a Game</h4>
+            <input @bind="inputRoomCode" placeholder="Enter 6-character code"
                    style="padding: 8px; font-size: 16px; text-transform: uppercase;" />
             <br /><br />
             <button @onclick="JoinGame" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-                Приєднатися
+                Join
             </button>
             @if (!string.IsNullOrEmpty(errorMessage))
             {
@@ -50,7 +50,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Помилка підключення до сервера: {ex.Message}";
+            errorMessage = $"Failed to connect to server: {ex.Message}";
         }
     }
 
@@ -66,7 +66,7 @@
     {
         if (string.IsNullOrWhiteSpace(inputRoomCode))
         {
-            errorMessage = "Будь ласка, введіть код кімнати!";
+            errorMessage = "Please enter a room code!";
             return;
         }
 
@@ -77,7 +77,7 @@
         }
         else
         {
-            errorMessage = "Кімнату не знайдено або вона вже заповнена!";
+            errorMessage = "Room not found or already full!";
         }
     }
 }

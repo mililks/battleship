@@ -8,10 +8,10 @@
 <div class="game-container">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <button class="btn btn-secondary" @onclick="LeaveGame">
-            ⬅️ До головного меню
+            ⬅️ Back to Menu
         </button>
         <div>
-            <h2>Кімната: <span class="badge">@RoomCode</span></h2>
+            <h2>Room: <span class="badge">@RoomCode</span></h2>
             @if (Host && !isBattleStarted)
             {
                 <button class="btn btn-primary" style="margin-top: 5px; font-size: 13px;" @onclick="CopyInviteLink">
@@ -25,26 +25,26 @@
     <h4 class="status-banner">@statusMessage</h4>
 
 
-    <!-- Фаза 1: Очікування гравців та розстановка -->
+    <!-- Phase 1: Waiting for players and ship placement -->
     @if (!isBattleStarted)
     {
         <div class="placement-panel">
             <button class="btn btn-primary" @onclick="RandomizeFleet" disabled="@isReady">
-                🔀 Випадкова розстановка
+                🔀 Randomize Fleet
             </button>
             <button class="btn btn-warning" @onclick="ClearFleet" disabled="@isReady">
-                🗑️ Очистити поле
+                🗑️ Clear Board
             </button>
             <button class="btn btn-info" @onclick="ToggleOrientation" disabled="@isReady">
-                🔄 @(selectedOrientation == ShipOrientation.Horizontal ? "Горизонтально (➡️)" : "Вертикально (⬇️)")
+                🔄 @(selectedOrientation == ShipOrientation.Horizontal ? "Horizontal (➡️)" : "Vertical (⬇️)")
             </button>
             <button class="btn btn-success" @onclick="ConfirmReady" disabled="@(isReady || !myBoard.IsFleetComplete())">
-                @(isReady ? "Очікування суперника..." : "Готовий до бою!")
+                @(isReady ? "Waiting for opponent..." : "Ready for Battle!")
             </button>
         </div>
 
         <div class="shipyard-panel">
-            <span class="shipyard-title">Оберіть корабель для встановлення (клік по встановленому кораблю на полі — прибрати):</span>
+            <span class="shipyard-title">Select a ship to place (click a placed ship on the board to remove it):</span>
             <div class="shipyard-buttons">
                 @foreach (var size in new[] { 4, 3, 2, 1 })
                 {
@@ -54,18 +54,18 @@
                             disabled="@(isReady || remaining == 0)"
                             @onclick="() => SelectShipSize(size)">
                         <span class="ship-preview">@(new string('■', size))</span>
-                        <span>(@remaining шт.)</span>
+                        <span>(@remaining left)</span>
                     </button>
                 }
             </div>
         </div>
     }
 
-    <!-- Фаза 2: Сітки полів -->
+    <!-- Phase 2: Game grids -->
     <div class="boards-layout">
-        <!-- Власне поле -->
+        <!-- Own board -->
         <div class="board-wrapper">
-            <h3>Ваш флот (@myBoard.Ships.Count / 10)</h3>
+            <h3>Your Fleet (@myBoard.Ships.Count / 10)</h3>
             <div class="ocean-grid" @onmouseleave="ClearHover">
                 @for (int y = 0; y < 10; y++)
                 {
@@ -85,9 +85,9 @@
             </div>
         </div>
 
-        <!-- Поле суперника -->
+        <!-- Opponent board -->
         <div class="board-wrapper">
-            <h3>Поле суперника</h3>
+            <h3>Opponent's Board</h3>
             <div class="ocean-grid">
                 @for (int y = 0; y < 10; y++)
                 {
@@ -313,15 +313,15 @@
     [SupplyParameterFromQuery] public bool Host { get; set; }
 
     private Board myBoard = new();
-    private CellState[,] trackingGrid = new CellState[10, 10]; // Поле відстеження пострілів
+    private CellState[,] trackingGrid = new CellState[10, 10]; // Shot tracking grid
 
     private bool isReady = false;
     private bool isBattleStarted = false;
     private bool isMyTurn = false;
-    private string statusMessage = "Розставте флот і натисніть «Готовий до бою»";
-    private string copyButtonText = "Скопіювати запрошення";
+    private string statusMessage = "Place your fleet and click \"Ready for Battle!\"";
+    private string copyButtonText = "Copy Invite Link";
 
-    // Ручна розстановка кораблів
+    // Manual ship placement
     private static readonly Dictionary<int, int> MaxShipsBySize = new()
     {
         { 4, 1 },
@@ -335,10 +335,10 @@
 
     private async Task LeaveGame()    
     {
-        // Сповіщаємо сервер про вихід з кімнати
+        // Notify server about leaving the room
         await HubService.LeaveRoomAsync(RoomCode);
 
-        // Перенаправляємо гравця назад на головну сторінку
+        // Redirect player back to the home page
         Navigation.NavigateTo("/");
     }
     protected override async Task OnInitializedAsync()
@@ -346,7 +346,7 @@
         myBoard.PlaceFleetRandomly();
         AutoSelectNextShipSize();
 
-        // 1. Перевіряємо, чи підключений клієнт до SignalR (критично при переході за URL)
+        // 1. Ensure client is connected to SignalR (critical when navigating directly via URL)
         if (!HubService.IsConnected)
         {
             try
@@ -355,46 +355,46 @@
             }
             catch (Exception ex)
             {
-                statusMessage = $"Помилка з'єднання: {ex.Message}";
+                statusMessage = $"Connection error: {ex.Message}";
                 return;
             }
         }
 
-        // 2. Підписуємося на події
+        // 2. Subscribe to events
         HubService.OnPlayerJoined += HandlePlayerJoined;
         HubService.OnGameStarted += HandleGameStarted;
         HubService.OnShotResultReceived += HandleShotResult;
         HubService.OnOpponentDisconnected += HandleOpponentDisconnected;
 
-        // 3. Якщо зайшов гість за посиланням — автоматично приєднуємося до кімнати на сервері!
+        // 3. If a guest joined via link — automatically join the room on the server
         if (!Host)
         {
-            statusMessage = "Приєднання до кімнати...";
+            statusMessage = "Joining room...";
             bool joined = await HubService.JoinRoomAsync(RoomCode);
             if (joined)
             {
-                statusMessage = "Ви підключилися! Розставте флот і підтвердіть готовність.";
+                statusMessage = "Connected! Place your fleet and confirm readiness.";
             }
             else
             {
-                statusMessage = "Не вдалося зайти (кімната не існує або заповнена).";
+                statusMessage = "Failed to join (room does not exist or is full).";
             }
         }
         else
         {
-            statusMessage = "Поділіться посиланням із другом та підтвердіть готовність.";
+            statusMessage = "Share the link with a friend and confirm readiness.";
         }
     }
     private async Task CopyInviteLink()
     {
-        // Формуємо чисте посилання для другого гравця БЕЗ ?host=true
+        // Build clean invite link for the second player WITHOUT ?host=true
         var uri = new Uri(Navigation.Uri);
-        var baseAddress = uri.GetLeftPart(UriPartial.Path); // отримує http://localhost:7091/game/CODE
+        var baseAddress = uri.GetLeftPart(UriPartial.Path);
         await JS.InvokeVoidAsync("copyToClipboard", baseAddress);
 
-        copyButtonText = "✅ Посилання скопійовано!";
+        copyButtonText = "✅ Link copied!";
         await Task.Delay(2500);
-        copyButtonText = "Скопіювати запрошення";
+        copyButtonText = "Copy Invite Link";
         StateHasChanged();
     }
 
@@ -440,7 +440,7 @@
         if (isReady || isBattleStarted) return;
         myBoard.Clear();
         selectedShipSize = 4;
-        statusMessage = "Поле очищено. Виставте кораблі на поле.";
+        statusMessage = "Board cleared. Place your ships on the grid.";
     }
 
     private void RandomizeFleet()
@@ -448,7 +448,7 @@
         if (isReady || isBattleStarted) return;
         myBoard.PlaceFleetRandomly();
         AutoSelectNextShipSize();
-        statusMessage = "Флот розставлено випадковим чином.";
+        statusMessage = "Fleet placed randomly.";
         StateHasChanged();
     }
 
@@ -474,7 +474,7 @@
 
         bool isValid = myBoard.CanPlaceShip(size, hoverPoint, selectedOrientation, out var pts);
 
-        // Перевіряємо, чи входить клітинка (x, y) до проєкції корабля від hoverPoint
+        // Check if cell (x, y) is part of the ship preview footprint from hoverPoint
         bool inFootprint = false;
         for (int i = 0; i < size; i++)
         {
@@ -497,7 +497,7 @@
 
         var clickedPt = new Point(x, y);
 
-        // Якщо клікнули по вже встановленому кораблю — прибираємо його, щоб можна було переставити
+        // If clicking an already placed ship — remove it so it can be repositioned
         if (myBoard.GetCellState(x, y) == CellState.Ship)
         {
             var removed = myBoard.RemoveShipAt(clickedPt);
@@ -505,18 +505,18 @@
             {
                 selectedShipSize = removed.Size;
                 selectedOrientation = removed.Orientation;
-                statusMessage = $"Прибрано: {removed.Name}. Оберіть нову позицію.";
+                statusMessage = $"Removed: {removed.Name}. Choose a new position.";
             }
             return;
         }
 
-        // Інакше пробуємо поставити обраний корабель
+        // Otherwise try to place the selected ship
         if (!selectedShipSize.HasValue || GetRemainingShips(selectedShipSize.Value) <= 0)
         {
             AutoSelectNextShipSize();
             if (!selectedShipSize.HasValue)
             {
-                statusMessage = "Усі кораблі вже виставлено! Натисніть «Готовий до бою!» або клікніть по кораблю, щоб переставити.";
+                statusMessage = "All ships are already placed! Click \"Ready for Battle!\" or click a ship to move it.";
                 return;
             }
         }
@@ -526,12 +526,12 @@
         {
             AutoSelectNextShipSize();
             statusMessage = myBoard.IsFleetComplete()
-                ? "Усі кораблі розставлено! Натисніть «Готовий до бою!»."
-                : $"Встановлено: {ship.Name}. Залишилося кораблів: {10 - myBoard.Ships.Count}.";
+                ? "All ships placed! Click \"Ready for Battle!\"."
+                : $"Placed: {ship.Name}. Ships remaining: {10 - myBoard.Ships.Count}.";
         }
         else
         {
-            statusMessage = "Неможливо поставити корабель тут (вихід за межі або дотик до іншого корабля).";
+            statusMessage = "Cannot place ship here (out of bounds or touching another ship).";
         }
     }
 
@@ -539,19 +539,19 @@
     {
         if (!myBoard.IsFleetComplete())
         {
-            statusMessage = "Спочатку виставте всі 10 кораблів!";
+            statusMessage = "Place all 10 ships first!";
             return;
         }
         isReady = true;
         hoverPoint = null;
-        statusMessage = "Очікування готовності суперника...";
+        statusMessage = "Waiting for opponent to be ready...";
         var points = myBoard.GetAllOccupiedPoints();
         await HubService.SetReadyAsync(RoomCode, points);
     }
 
     private void HandlePlayerJoined(string code)
     {
-        statusMessage = "Суперник підключився до кімнати!";
+        statusMessage = "Opponent joined the room!";
         InvokeAsync(StateHasChanged);
     }
 
@@ -560,7 +560,7 @@
         isBattleStarted = true;
        
         isMyTurn = Host;
-        statusMessage = isMyTurn ? "Бій розпочато! Ваш перший хід!" : "Бій розпочато! Хід супротивника...";
+        statusMessage = isMyTurn ? "Battle started! Your first turn!" : "Battle started! Opponent's turn...";
         InvokeAsync(StateHasChanged);
     }
 
@@ -570,18 +570,43 @@
         await HubService.SendShotAsync(RoomCode, new Point(x, y));
     }
 
+    private static string GetEnglishShipName(ShotResultDto result)
+    {
+        if (result.SunkShipCoordinates is { Count: > 0 } coords)
+        {
+            return coords.Count switch
+            {
+                4 => "Carrier",
+                3 => "Battleship",
+                2 => "Cruiser",
+                1 => "Destroyer",
+                _ => "ship"
+            };
+        }
+
+        return result.SunkShipName switch
+        {
+            "Чотирипалубний" => "Carrier",
+            "Трипалубний" => "Battleship",
+            "Двопалубний" => "Cruiser",
+            "Однопалубний" => "Destroyer",
+            null or "" => "ship",
+            _ => result.SunkShipName
+        };
+    }
+
     private void HandleShotResult(ShotResultDto result)
     {
-        // Оновлюємо мапу пострілів або власну дошку
+        // Update tracking grid or own board
         var pt = result.Target;
 
         if (isMyTurn)
         {
-            // Це був наш постріл
+            // This was our shot
             trackingGrid[pt.X, pt.Y] = result.IsHit ? CellState.Hit : CellState.Miss;
 
-            // Якщо корабель затоплено — виділяємо всі його координати як Hit,
-            // а всі сусідні координати навколо нього автоматично позначаємо як Miss (промах)
+            // If ship is sunk — mark all its coordinates as Hit,
+            // and automatically mark all surrounding coordinates as Miss
             if (result.IsSunk && result.SunkShipCoordinates != null)
             {
                 foreach (var shipPt in result.SunkShipCoordinates)
@@ -601,33 +626,33 @@
 
             if (result.IsGameOver)
             {
-                statusMessage = "🏆 Вітаємо! Ви знищили весь ворожий флот і перемогли!";
+                statusMessage = "🏆 Congratulations! You destroyed the entire enemy fleet and won!";
                 isMyTurn = false;
             }
             else
             {
-                isMyTurn = result.IsHit; // Якщо влучив — стріляєш знову, якщо промах — хід переходить
+                isMyTurn = result.IsHit; // If hit — shoot again, if miss — turn passes
                 statusMessage = result.IsHit
-                    ? (result.IsSunk ? $"🔥 Затоплено: {result.SunkShipName ?? "корабель"}! Стріляйте ще раз." : "🎯 Влучання! Стріляйте ще раз.")
-                    : "🌊 Промах. Хід перейшов до суперника.";
+                    ? (result.IsSunk ? $"🔥 Sunk: {GetEnglishShipName(result)}! Shoot again." : "🎯 Hit! Shoot again.")
+                    : "🌊 Miss. Opponent's turn.";
             }
         }
         else
         {
-            // Це стріляв суперник по нашій дошці (обробляємо і влучання, і промахи):
+            // Opponent fired at our board (process both hits and misses)
             myBoard.ProcessShot(pt);
 
             if (result.IsGameOver)
             {
-                statusMessage = "💀 Ваш флот знищено. Поразка.";
+                statusMessage = "💀 Your fleet has been destroyed. Defeat.";
                 isMyTurn = false;
             }
             else
             {
                 isMyTurn = !result.IsHit;
                 statusMessage = result.IsHit
-                    ? (result.IsSunk ? $"💥 Суперник затопив ваш {result.SunkShipName ?? "корабель"}!" : "💥 Суперник влучив у ваш корабель!")
-                    : "🛡️ Суперник промахнувся. Ваш хід!";
+                    ? (result.IsSunk ? $"💥 Opponent sunk your {GetEnglishShipName(result)}!" : "💥 Opponent hit your ship!")
+                    : "🛡️ Opponent missed. Your turn!";
             }
         }
 
@@ -636,7 +661,7 @@
 
     private void HandleOpponentDisconnected()
     {
-        statusMessage = "Суперник вийшов із гри. Партію завершено.";
+        statusMessage = "Opponent left the game. Match ended.";
         isBattleStarted = false;
         InvokeAsync(StateHasChanged);
     }

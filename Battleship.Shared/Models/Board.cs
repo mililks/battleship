@@ -204,7 +204,7 @@ public class Board
     private static void ValidateCoordinate(int x, int y)
     {
         if (x < 0 || x >= Size || y < 0 || y >= Size)
-            throw new ArgumentOutOfRangeException("Координата виходить за межі сітки 10x10.");
+            throw new ArgumentOutOfRangeException("Coordinate is outside the 10x10 grid.");
     }
 
     public void SetShipsFromPoints(List<Point> points)

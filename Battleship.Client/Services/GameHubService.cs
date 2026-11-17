@@ -35,13 +35,13 @@ public class GameHubService : IAsyncDisposable
 
     public async Task<string> CreateRoomAsync()
     {
-        if (_hubConnection == null) throw new InvalidOperationException("З'єднання не встановлено.");
+        if (_hubConnection == null) throw new InvalidOperationException("Connection is not established.");
         return await _hubConnection.InvokeAsync<string>("CreateRoom");
     }
 
     public async Task<bool> JoinRoomAsync(string roomCode)
     {
-        if (_hubConnection == null) throw new InvalidOperationException("З'єднання не встановлено.");
+        if (_hubConnection == null) throw new InvalidOperationException("Connection is not established.");
         return await _hubConnection.InvokeAsync<bool>("JoinRoom", roomCode);
     }
 

@@ -2,6 +2,6 @@
 
 public class Carrier : Ship
 {
-    public override string Name => "Чотирипалубний";
+    public override string Name => "Carrier";
     public override int Size => 4;
 }
